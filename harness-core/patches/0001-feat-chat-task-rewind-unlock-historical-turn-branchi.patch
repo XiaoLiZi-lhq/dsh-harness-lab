@@ -1,0 +1,232 @@
+From f8a671df3575a6e3a464442e3c57c6d440b91588 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E6=9D=8E=E9=B8=BF=E9=92=A6?=
+ <13626820+lihongqin@user.noreply.gitee.com>
+Date: Sun, 30 Aug 2026 13:01:00 +0800
+Subject: [PATCH] =?UTF-8?q?feat(chat):=20task=20rewind=20=E2=80=94=20unloc?=
+ =?UTF-8?q?k=20historical=20turn=20branching,=20edit-and-resend=20fork=20w?=
+ =?UTF-8?q?ith=20composer=20prefill?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- fork command gains exclusive anchor (cut BEFORE the anchoring turn) for edit-and-resend
+- TurnTailNodeView: allow branching from any completed turn, not just the latest
+- UserMessageNodeView: branch button = exclusive fork + composer draft prefill
+- task-timeline sidebar plugin mounted separately via profile
+---
+ .../src/client/contract/sessions.ts           |  5 +++--
+ .../src/client/sessions/service.ts            |  2 ++
+ .../api/session-controller/src/commands.ts    | 10 ++++++++--
+ packages/api/session-controller/src/types.ts  |  7 +++++++
+ .../client/connection/src/client/fixture.ts   |  6 +++++-
+ packages/client/ui-chat/src/client/apply.ts   | 19 ++++++++++++++++---
+ .../ui-chat/src/client/chat/MessageItem.tsx   |  3 ++-
+ .../src/client/chat/TurnTailNodeView.tsx      |  6 ++----
+ .../ui-chat/src/client/contract/slots.ts      |  4 ++--
+ 9 files changed, 47 insertions(+), 15 deletions(-)
+
+diff --git a/packages/api/session-controller/src/client/contract/sessions.ts b/packages/api/session-controller/src/client/contract/sessions.ts
+index 7c8a90e662..a278a4102d 100644
+--- a/packages/api/session-controller/src/client/contract/sessions.ts
++++ b/packages/api/session-controller/src/client/contract/sessions.ts
+@@ -89,12 +89,13 @@ export interface ISessions {
+    * the child is in the list store and `open()` can target it.
+    * @param opts - source session id, the optional event seq anchoring the
+    *   cut (the boundary is the first turn/end at or after it; an in-log
+-   *   anchor in an open turn is unavailable rather than clipped backward),
++   *   anchor in an open turn is unavailable rather than clipped backward), `exclusive` cuts
++ *   BEFORE the anchoring turn instead of after it,
+    *   and whether to increment an inherited durable title before resolving.
+    * @returns the child session id.
+    * @throws when the fork fails, or when a requested child-title rename fails after creation.
+    */
+-  fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId>
++  fork(opts: { sessionId: SessionId; atSeq?: number; exclusive?: boolean; increaseTitle?: boolean }): Promise<SessionId>
+   /**
+    * Resolve an Agent-scoped context view (use-and-discard).
+    * @param id - session id.
+diff --git a/packages/api/session-controller/src/client/sessions/service.ts b/packages/api/session-controller/src/client/sessions/service.ts
+index a54d1ece0d..0a24e3a1e6 100644
+--- a/packages/api/session-controller/src/client/sessions/service.ts
++++ b/packages/api/session-controller/src/client/sessions/service.ts
+@@ -428,6 +428,7 @@ export class ClientSessions implements ISessions {
+   async fork(opts: {
+     sessionId: SessionId
+     atSeq?: number
++    exclusive?: boolean
+     increaseTitle?: boolean
+   }): Promise<SessionId> {
+     const sourceTitle = opts.increaseTitle
+@@ -439,6 +440,7 @@ export class ClientSessions implements ISessions {
+       // turn/start), so the host's first-turn/end-at-or-after cut still ends
+       // on that turn — never clipped back to the previous one.
+       ...(opts.atSeq === undefined ? {} : { atSeq: Math.floor(opts.atSeq) }),
++      ...(opts.exclusive === true ? { exclusive: true } : {}),
+     })
+     if (!result.ok) throw new SessionForkError(result.error, opts.sessionId)
+     this.projectList()
+diff --git a/packages/api/session-controller/src/commands.ts b/packages/api/session-controller/src/commands.ts
+index 48c41f3aa1..29561fd626 100644
+--- a/packages/api/session-controller/src/commands.ts
++++ b/packages/api/session-controller/src/commands.ts
+@@ -210,7 +210,11 @@ export class SessionCommandController {
+     const atSeq = request.atSeq
+     const anchoredBoundary = atSeq === undefined
+       ? undefined
+-      : source.events.find(event => event.type === 'turn/end' && event.seq >= atSeq)
++      : request.exclusive === true
++        // Exclusive anchor: the last completed turn ENDING before atSeq, so
++        // the seed omits the turn containing it (edit-and-resend forks).
++        ? source.events.findLast(event => event.type === 'turn/end' && event.seq < atSeq)
++        : source.events.find(event => event.type === 'turn/end' && event.seq >= atSeq)
+     const boundary = anchoredBoundary
+       ?? (atSeq === undefined || atSeq > lastSeq
+         ? source.events.findLast(event => event.type === 'turn/end')
+@@ -219,7 +223,9 @@ export class SessionCommandController {
+       reject(
+         'fork-unavailable',
+         atSeq !== undefined && atSeq <= lastSeq
+-          ? `session "${request.sessionId}" has not completed the turn containing event ${String(atSeq)}`
++          ? request.exclusive === true
++            ? `session "${request.sessionId}" has no completed turn before event ${String(atSeq)} to fork from`
++            : `session "${request.sessionId}" has not completed the turn containing event ${String(atSeq)}`
+           : `session "${request.sessionId}" has no completed turn to fork from`,
+         { sessionId: request.sessionId },
+       )
+diff --git a/packages/api/session-controller/src/types.ts b/packages/api/session-controller/src/types.ts
+index 167937e3d3..f671701c4f 100644
+--- a/packages/api/session-controller/src/types.ts
++++ b/packages/api/session-controller/src/types.ts
+@@ -306,6 +306,13 @@ export interface SessionRenameValue {
+ export interface SessionForkRequest {
+   readonly sessionId: SessionId
+   readonly atSeq?: number
++  /**
++   * Anchor the cut BEFORE the turn containing `atSeq` (the last completed
++   * turn that ends before it) instead of after it: the seed then excludes
++   * that turn entirely, so a caller can re-send an edited version of the
++   * user message that opened it.
++   */
++  readonly exclusive?: boolean
+ }
+ 
+ /** Identity of a newly forked Session. */
+diff --git a/packages/client/connection/src/client/fixture.ts b/packages/client/connection/src/client/fixture.ts
+index 17b3a006c4..cf5134cd51 100644
+--- a/packages/client/connection/src/client/fixture.ts
++++ b/packages/client/connection/src/client/fixture.ts
+@@ -246,7 +246,11 @@ interface FixtureSessionApi {
+     readonly agentPreset?: string
+   }): Promise<ConnectionRpcResult<unknown>>
+   rename(request: { readonly sessionId: SessionId; readonly title: string }): Promise<ConnectionRpcResult<unknown>>
+-  fork(request: { readonly sessionId: SessionId; readonly atSeq?: number }): Promise<ConnectionRpcResult<unknown>>
++  fork(request: {
++    readonly sessionId: SessionId
++    readonly atSeq?: number
++    readonly exclusive?: boolean
++  }): Promise<ConnectionRpcResult<unknown>>
+   history(request: {
+     readonly sessionId: SessionId
+     readonly throughSeq?: number
+diff --git a/packages/client/ui-chat/src/client/apply.ts b/packages/client/ui-chat/src/client/apply.ts
+index be061dff13..7bf5301c20 100644
+--- a/packages/client/ui-chat/src/client/apply.ts
++++ b/packages/client/ui-chat/src/client/apply.ts
+@@ -136,9 +136,22 @@ export function apply(ctx: Context): void {
+             },
+             read: () => chatScrollPositions.get(sessionId) ?? null,
+           },
+-          forkAt: (seq) => {
+-            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true })
+-              .then((childId) => { ctx.sessions.open(childId) })
++          forkAt: (seq, prefill, exclusive) => {
++            ctx.sessions.fork({
++              sessionId, atSeq: seq, increaseTitle: true,
++              ...(exclusive === true ? { exclusive: true } : {}),
++            })
++              .then((childId) => {
++                if (prefill !== undefined && prefill !== '') {
++                  // Edit-and-resend affordance: land the anchored user text in
++                  // the child's composer through the conversation input face.
++                  const conversation = ctx.get('conversation') as
++                    | { input?: { shell?: (id: string) => { setDraft: (text: string) => void } } }
++                    | undefined
++                  try { conversation?.input?.shell?.(childId)?.setDraft(prefill) } catch { /* draft is best-effort */ }
++                }
++                ctx.sessions.open(childId)
++              })
+               .catch(() => {
+                 // Fork or child-title failure leaves the source view unchanged.
+               })
+diff --git a/packages/client/ui-chat/src/client/chat/MessageItem.tsx b/packages/client/ui-chat/src/client/chat/MessageItem.tsx
+index 467e486ecb..3dc53f5f87 100644
+--- a/packages/client/ui-chat/src/client/chat/MessageItem.tsx
++++ b/packages/client/ui-chat/src/client/chat/MessageItem.tsx
+@@ -271,7 +271,7 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }:
+ 
+ /** User and admitted-steering keyed Chat renderer. */
+ export const UserMessageNodeView = memo(function UserMessageNodeView({
+-  node, renderMessageImages, t,
++  node, renderMessageImages, forkAt, t,
+ }: ChatNodeViewProps<'user' | 'steering'>) {
+   const data = node.data
+   return (
+@@ -286,6 +286,7 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
+           time={data.time}
+           clock="start"
+           className={css.actions}
++          onBranch={forkAt === undefined ? undefined : () => { forkAt(data.seq, text, true) }}
+           t={t}
+         />
+       )}
+diff --git a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
+index cc715bf450..0d6dab7bad 100644
+--- a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
++++ b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
+@@ -11,11 +11,9 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
+ 
+ /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
+ export const TurnTailNodeView = memo(function TurnTailNodeView({
+-  node, openFile, forkAt, renderSlot, renderSlotChain, t, useChat,
++  node, openFile, forkAt, renderSlot, renderSlotChain, t,
+ }: TurnTailNodeViewProps) {
+   const data = node.data
+-  const hasLaterChatNode = useChat(snapshot =>
+-    snapshot.locations.getTurn(data.turn).at(-1) !== node.key)
+   const turn = node.location.kind === 'turn' || node.location.kind === 'step'
+     ? node.location.turn
+     : undefined
+@@ -46,7 +44,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
+           tokensPerSecond={data.tokensPerSecond}
+           clock="end"
+           onBranch={() => { forkAt(closing.finalNode.seq) }}
+-          branchUnavailable={data.branchUnavailable || hasLaterChatNode}
++          branchUnavailable={data.branchUnavailable}
+           className={css.actions}
+           extraActions={assistantActions}
+           t={t}
+diff --git a/packages/client/ui-chat/src/client/contract/slots.ts b/packages/client/ui-chat/src/client/contract/slots.ts
+index 307d8f703b..6c1d1e9ef4 100644
+--- a/packages/client/ui-chat/src/client/contract/slots.ts
++++ b/packages/client/ui-chat/src/client/contract/slots.ts
+@@ -65,7 +65,7 @@ export interface ChatNodeOwnerProps {
+   cwd?: string | undefined
+   openFile: (path: string) => void
+   inspectCall: (callId: ToolCallId) => void
+-  forkAt: (seq: number) => void
++  forkAt: (seq: number, prefill?: string, exclusive?: boolean) => void
+   renderMessageImages: RenderMessageImages
+   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+   /** Turn-process state when this Node belongs to a projected Turn. */
+@@ -123,7 +123,7 @@ export interface ChatViewInjected {
+     save: (position: ChatScrollPosition | null) => void
+     read: () => ChatScrollPosition | null
+   }
+-  forkAt: (seq: number) => void
++  forkAt: (seq: number, prefill?: string, exclusive?: boolean) => void
+   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+ }
+ 
+-- 
+2.49.0
+
