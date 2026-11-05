@@ -1,0 +1,15 @@
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# deps
+node_modules/
+
+# logs & OS
+*.log
+.DS_Store
+
+# editor
+.idea/
+.vscode/
