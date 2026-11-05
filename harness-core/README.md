@@ -42,5 +42,5 @@ feat(chat): task rewind — unlock historical turn branching, edit-and-resend fo
 
 - commit 作者邮箱为 `13626820+lihongqin@user.noreply.gitee.com`（Gitee noreply）。GitHub 不会把该邮箱的 commit 归属到 XiaoLiZi-lhq 账号（无头像、无贡献图）。修复方式二选一：把该邮箱加入 GitHub 账号邮箱列表（零改动），或后续重写作者信息。
 - 「构建通过」为 2026-08 当时口径；本轮整理仓库时未重跑上游构建验证。
-- 旧笔记中提及的「api-catalog 全链路打通」未能在本机任何 commit / 源码中取证证实，本仓库不收录、不引用该表述。
+- 本目录只收录可在本机取证复核的改动（补丁 + git 元数据）；旧笔记中无法取证的条目一律不进入。
 - 补丁内容是对上游开源仓库的增量 diff，随本仓库 MIT 许可发布；如上游许可证条款有更严格要求，以退化为仅保留元数据为准。
