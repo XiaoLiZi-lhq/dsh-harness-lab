@@ -1,0 +1,17 @@
+{
+  "name": "dsh-task-timeline",
+  "version": "0.1.1",
+  "description": "DSH sidebar tab: live task list + per-turn task snapshots replayed from the session log, each snapshot a one-click fork (task-level rewind)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "inject": ["betterSidebar", "sessions"], "platform": "web" }
+  }
+}
