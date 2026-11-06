@@ -47,7 +47,7 @@ DSH 插件分**两半**，本插件各占一半：
 
 - commit：`f8a671df3575a6e3a464442e3c57c6d440b91588`（9 文件，+47/−15）
 - 补丁存证：[`harness-core/patches/0001-feat-chat-task-rewind-unlock-historical-turn-branchi.patch`](harness-core/patches/0001-feat-chat-task-rewind-unlock-historical-turn-branchi.patch)
-- [待补 commit 链接]：原 commit 在本地 `~/deepseek-harness`（基线上游 `cd5ef81481`），未推送个人 fork；推送后替换为 GitHub URL
+- [Commit 链接](https://github.com/XiaoLiZi-lhq/deepseek-harness/commit/f8a671df3575a6e3a464442e3c57c6d440b91588)：已推送至本人 fork 的 `feat/task-rewind` 分支（基线上游 `cd5ef81481`）
 
 ## 4. 怎么验证的（按取证口径，不外推）
 

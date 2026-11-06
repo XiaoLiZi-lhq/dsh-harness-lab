@@ -36,11 +36,11 @@ feat(chat): task rewind — unlock historical turn branching, edit-and-resend fo
 
 - [`patches/0001-feat-chat-task-rewind-unlock-historical-turn-branchi.patch`](patches/0001-feat-chat-task-rewind-unlock-historical-turn-branchi.patch) —— `git format-patch -1 f8a671df35` 原样导出。
 - 复现方法（在上游 checkout 中）：`git am patches/0001-*.patch`。
-- [待补 commit 链接]：该 commit 目前只存在于本机 `~/deepseek-harness`（未推送个人 fork）；若日后推送到本人 fork，此处替换为 GitHub commit URL。
+- [Commit 链接](https://github.com/XiaoLiZi-lhq/deepseek-harness/commit/f8a671df3575a6e3a464442e3c57c6d440b91588)：已推送至本人 fork 的 `feat/task-rewind` 分支，与补丁文件内容一一对应。
 
 ## 归属说明（诚实边界）
 
-- commit 作者邮箱为 `13626820+lihongqin@user.noreply.gitee.com`（Gitee noreply）。GitHub 不会把该邮箱的 commit 归属到 XiaoLiZi-lhq 账号（无头像、无贡献图）。修复方式二选一：把该邮箱加入 GitHub 账号邮箱列表（零改动），或后续重写作者信息。
+- commit 作者邮箱为 `13626820+lihongqin@user.noreply.gitee.com`（Gitee noreply）。GitHub 不会把该邮箱的 commit 归属到 XiaoLiZi-lhq 账号（无头像、无贡献图）。**有意保留原状**：该 commit 从未公开发布，本可重写作者邮箱，但重写会改变 SHA、使其与补丁文件的 `From:` 头不一致——证据链一致性优先于头像显示。同账号下其他仓库的历史 commit 已完成邮箱重写归位。
 - 「构建通过」为 2026-08 当时口径；本轮整理仓库时未重跑上游构建验证。
 - 本目录只收录可在本机取证复核的改动（补丁 + git 元数据）；旧笔记中无法取证的条目一律不进入。
 - 补丁内容是对上游开源仓库的增量 diff，随本仓库 MIT 许可发布；如上游许可证条款有更严格要求，以退化为仅保留元数据为准。
